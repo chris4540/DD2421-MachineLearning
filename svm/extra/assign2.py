@@ -15,7 +15,7 @@ class MulticlassSVM:
     Simply use one-vs-rest
     """
     def __init__(self, n_classes=3, ploy_dim=2):
-        self.alpha_times_y = None
+        self.alphas = None
         self.ploy_dim = ploy_dim
         self.n_classes = n_classes
 
@@ -31,40 +31,53 @@ class MulticlassSVM:
         self.n_samples = n_samples
         # this is tricky as usually we use alpha to weight samples
         # but they use \alpha_i \y_i to represent the fake weighting w_i
-        self.alpha_times_y = np.zeros((self.n_classes, n_samples))
+        self.alphas = np.zeros((self.n_classes, n_samples))
 
         # ------------------------------------------------------
         # How to optimize this loop? Levae Douglas as exercise
         for i in range(self.n_samples):
-            inner_prod = self._inner_prod(X[i, :])
-            preds = self.sign(inner_prod)
+            cls_vals = self._get_classifier_vals(X[i, :])
+            preds = self.sign(cls_vals)
             truth = self._label_to_custom_onehot(y[i])
             for j in range(self.n_classes):
-                if inner_prod[j]*truth[j] <= 0:
+                if cls_vals[j]*truth[j] <= 0:  # not the same side
                     # incorrect prediction, apply delta rule
-                    self.alpha_times_y[j, i] -= preds[j]
+                    self.alphas[j, i] -= preds[j]
 
-    def _inner_prod(self, x):
+    def _get_classifier_vals(self, x):
+        """
+        This is the classifier:
+        .. math::
+            w(x) = \sum_i \alpha_i K(x_i, x)
+
+        Args:
+            x (np.ndarray): the input feature you would like to classify
+
+        Return:
+            An array of size (n_classes,). Each value represents the inner product
+            sum between support vectors of a classifier and the incoming feature.
+        """
         assert x.shape == (self.n_dim,)
 
         ret = np.zeros((self.n_classes,))
         for i in range(self.n_samples):
             kernel_val = self.kernel_fn(x, self.data[i, :])
-            weights = self.alpha_times_y[:, i]
+            weights = self.alphas[:, i]
+            # print(f"weights= {weights}")
             ret += kernel_val*weights
         assert ret.shape == (self.n_classes,)
         return ret
 
     def predict(self, x):
-        inner_prod = self._inner_prod(x)
-        return np.argmax(inner_prod)
+        cls_vals = self._get_classifier_vals(x)
+        return np.argmax(cls_vals)
 
     @staticmethod
     def sign(val):
         ret = np.where(val <= 0.0, -1, 1)
         return ret
 
-    def _label_to_custom_onehot(self, lable: int):
+    def _label_to_custom_onehot(self, label: int):
         """
         Similar to one-hot encoding, we mark the truth one as 1, otherwise -1
 
@@ -76,7 +89,7 @@ class MulticlassSVM:
         [-1, -1, -1, -1, 1]
         """
         ret = np.full((self.n_classes,), -1)
-        ret[lable] = 1
+        ret[label] = 1
         return ret
 
 
@@ -89,6 +102,8 @@ def load_dat(fname):
 
 if __name__ == "__main__":
     X_train, y_train = load_dat("dtrain123.dat")
+    X_train = X_train[:20, :]
+    y_train = y_train[:20]
     svm = MulticlassSVM(n_classes=3)
     svm.fit(X_train, y_train)
 
